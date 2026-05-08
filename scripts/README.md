@@ -6,8 +6,9 @@ This directory is reserved for harness automation.
 
 The upstream installer applies the Harness v0 operating files and folder
 structure to a target project directory. It defaults to the current directory,
-accepts a target path, and stops if the target already contains `AGENTS.md`,
-`docs/`, or `scripts/`.
+accepts a target path, and asks interactive users whether to stop, merge, or
+override when the target already contains `AGENTS.md`, `docs/`, or `scripts/`.
+Non-interactive installs stop on those protected paths.
 
 ```bash
 curl -fsSL "https://raw.githubusercontent.com/hoangnb24/harness-experimental/main/scripts/install-harness.sh?$(date +%s)" | bash -s -- --yes

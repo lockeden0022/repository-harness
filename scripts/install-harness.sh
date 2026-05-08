@@ -15,8 +15,9 @@ Options:
   -h, --help             Show this help.
 
 Safety:
-  The installer stops if AGENTS.md, docs/, or scripts/ already exist in the
-  target directory. Pick an empty target or move those paths first.
+  If AGENTS.md, docs/, or scripts/ already exist, interactive installs ask
+  whether to stop, merge missing files, or override after backup. Non-
+  interactive installs stop.
 
 Examples:
   scripts/install-harness.sh
@@ -76,7 +77,10 @@ copy_file() {
       return
     fi
 
-    if [ "$FORCE" -eq 1 ]; then
+    if [ "$CONFLICT_ACTION" = "merge" ]; then
+      log "skip     $relative (merge keeps existing file)"
+      SKIPPED=$((SKIPPED + 1))
+    elif [ "$FORCE" -eq 1 ]; then
       if [ "$DRY_RUN" -eq 1 ]; then
         log "overwrite $relative (backup first)"
       else
@@ -126,19 +130,64 @@ check_protected_target_paths() {
   [ -e "$TARGET_DIR/docs" ] && conflicts+=("docs/")
   [ -e "$TARGET_DIR/scripts" ] && conflicts+=("scripts/")
 
-  if [ "${#conflicts[@]}" -gt 0 ]; then
-    local joined=""
-    local item
-    for item in "${conflicts[@]}"; do
-      if [ -n "$joined" ]; then
-        joined="$joined, $item"
-      else
-        joined="$item"
-      fi
-    done
+  [ "${#conflicts[@]}" -gt 0 ] || return 0
 
+  local joined=""
+  local item
+  for item in "${conflicts[@]}"; do
+    if [ -n "$joined" ]; then
+      joined="$joined, $item"
+    else
+      joined="$item"
+    fi
+  done
+
+  if [ "$YES" -eq 1 ] || [ ! -t 0 ] || [ ! -t 1 ]; then
     warn_stop "target already contains protected Harness paths: $joined. Refusing to install so existing project instructions or docs are not mixed or overwritten. Use an empty target directory, or move those paths before running the installer."
   fi
+
+  printf 'Warning: target already contains protected Harness paths: %s\n' "$joined" >&2
+  printf 'Choose how to continue:\n' >&2
+  printf '  [s] Stop     Exit without writing files (recommended)\n' >&2
+  printf '  [m] Merge    Copy missing Harness files and skip existing files\n' >&2
+  printf '  [o] Override Back up and replace AGENTS.md, docs/, and scripts/\n' >&2
+  printf 'Choice [s/m/o, default s]: ' >&2
+
+  local choice
+  read -r choice
+  case "$choice" in
+    m|M|merge|Merge)
+      CONFLICT_ACTION="merge"
+      log "Continuing with merge. Existing files will be skipped."
+      ;;
+    o|O|override|Override)
+      CONFLICT_ACTION="override"
+      override_protected_target_paths
+      ;;
+    ""|s|S|stop|Stop)
+      warn_stop "installation stopped by user."
+      ;;
+    *)
+      warn_stop "unknown choice: $choice"
+      ;;
+  esac
+}
+
+override_protected_target_paths() {
+  local protected
+
+  for protected in AGENTS.md docs scripts; do
+    [ -e "$TARGET_DIR/$protected" ] || continue
+
+    if [ "$DRY_RUN" -eq 1 ]; then
+      log "override $protected (backup first)"
+      continue
+    fi
+
+    mkdir -p "$BACKUP_DIR"
+    mv "$TARGET_DIR/$protected" "$BACKUP_DIR/$protected"
+    log "removed  $protected (backup: ${BACKUP_DIR#$TARGET_DIR/}/$protected)"
+  done
 }
 
 TARGET_INPUT="${HARNESS_TARGET_DIR:-$PWD}"
@@ -222,6 +271,7 @@ BACKUP_DIR="$TARGET_DIR/.harness-backup/$(date +%Y%m%d%H%M%S)"
 CREATED=0
 UPDATED=0
 SKIPPED=0
+CONFLICT_ACTION="install"
 
 if [ "$DRY_RUN" -eq 1 ]; then
   log "Dry run: no files will be written."

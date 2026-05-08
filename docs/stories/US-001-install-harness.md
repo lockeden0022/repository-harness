@@ -26,8 +26,11 @@ scripts, CI, tests, or product implementation.
 - The installer defaults to the current directory when no target is provided.
 - The installer accepts a specific target path through a command-line option or
   positional argument.
-- If `AGENTS.md`, `docs/`, or `scripts/` already exists in the target, the
-  installer shows a warning and stops before writing files.
+- If `AGENTS.md`, `docs/`, or `scripts/` already exists in the target, an
+  interactive install shows a warning and asks whether to stop, merge missing
+  files, or override those paths after backup.
+- If `AGENTS.md`, `docs/`, or `scripts/` already exists in the target, a
+  non-interactive install stops before writing files.
 - Existing non-protected files are not overwritten by default.
 - Forced overwrites create a timestamped backup before replacing non-protected
   files.
@@ -73,13 +76,18 @@ implementation surfaces are not scaffolded.
 - `scripts/install-harness.sh --directory "$AGENTS_CONFLICT" --yes`
 - `scripts/install-harness.sh --directory "$DOCS_CONFLICT" --yes`
 - `scripts/install-harness.sh --directory "$SCRIPTS_CONFLICT" --yes --force`
+- interactive conflict prompt with `m` choice to merge missing files
+- interactive conflict prompt with `o` choice to back up and override protected
+  paths
+- interactive conflict prompt with default choice to stop without writing files
 - `HARNESS_SOURCE_BASE_URL="file:///Users/themrb/Documents/personal/harness-experimental" bash -s -- --directory "$REMOTE_TARGET" --yes < scripts/install-harness.sh`
 - `curl -fsSL "file:///Users/themrb/Documents/personal/harness-experimental/scripts/install-harness.sh" | HARNESS_SOURCE_BASE_URL="file:///Users/themrb/Documents/personal/harness-experimental" bash -s -- --directory "$TARGET" --yes`
 - `HARNESS_SOURCE_BASE_URL="file:///Users/themrb/Documents/personal/harness-experimental" bash -s -- --directory "$DRY_TARGET" --yes --dry-run < scripts/install-harness.sh`
 
 Validated behaviors: dry-run writes no files, real install creates the harness
-structure, existing `README.md` is left untouched by default, targets containing
-`AGENTS.md`, `docs/`, or `scripts/` stop with a warning before writing files,
-protected-path conflicts stop even when `--force` is provided, remote-source
-mode works when the script is piped into Bash, and target projects do not
-receive `scripts/install-harness.sh` or this installer story.
+structure, existing `README.md` is left untouched by default, non-interactive
+targets containing `AGENTS.md`, `docs/`, or `scripts/` stop with a warning
+before writing files, interactive users can stop, merge missing files, or back
+up and override protected paths, remote-source mode works when the script is
+piped into Bash, and target projects do not receive `scripts/install-harness.sh`
+or this installer story.
