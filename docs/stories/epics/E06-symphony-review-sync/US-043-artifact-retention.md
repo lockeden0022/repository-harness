@@ -2,7 +2,7 @@
 
 ## Status
 
-planned
+implemented
 
 ## Lane
 
@@ -51,5 +51,12 @@ Controls repository growth without weakening changeset source-of-truth history.
 
 ## Evidence
 
-Add validation output after implementation.
-
+- Added `harness-symphony runs compact --keep-last <n>`.
+- Compaction refuses `--keep-last 0`, removes old run artifact directories,
+  and never touches `.harness/changesets/`.
+- Updated default `symphony.runs_dir` to `.harness/runs` so review artifacts
+  are committed surfaces by default.
+- Smoke: compacted a temporary `.harness/runs` tree while preserving
+  `.harness/changesets/run_1.changeset.jsonl`.
+- Validation: retention unit tests; `cargo test --workspace`;
+  `cargo fmt --check`; `cargo clippy --workspace -- -D warnings`.

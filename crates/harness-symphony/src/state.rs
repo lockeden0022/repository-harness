@@ -71,6 +71,12 @@ impl RunStateStore {
                 next_action TEXT NOT NULL,
                 created_at TEXT NOT NULL DEFAULT (datetime('now')),
                 updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+            CREATE TABLE IF NOT EXISTS changeset_sync (
+                id TEXT PRIMARY KEY,
+                path TEXT NOT NULL,
+                applied INTEGER NOT NULL,
+                synced_at TEXT NOT NULL DEFAULT (datetime('now'))
             );",
         )?;
         Ok(())
@@ -172,6 +178,55 @@ impl RunStateStore {
             .optional()
             .map_err(StateError::from)
     }
+
+    pub fn update_pr_url(&self, run_id: &str, pr_url: &str) -> Result<(), StateError> {
+        self.init()?;
+        let connection = Connection::open(&self.path)?;
+        connection.execute(
+            "UPDATE run_state
+             SET pr_url=?1, next_action='review pull request', updated_at=datetime('now')
+             WHERE run_id=?2;",
+            params![pr_url, run_id],
+        )?;
+        if connection.changes() == 0 {
+            return Err(StateError::RunNotFound(run_id.to_owned()));
+        }
+        Ok(())
+    }
+
+    pub fn record_changeset_synced(
+        &self,
+        id: &str,
+        path: &std::path::Path,
+        applied: bool,
+    ) -> Result<(), StateError> {
+        self.init()?;
+        let connection = Connection::open(&self.path)?;
+        connection.execute(
+            "INSERT INTO changeset_sync (id, path, applied, synced_at)
+             VALUES (?1, ?2, ?3, datetime('now'))
+             ON CONFLICT(id) DO UPDATE SET
+                path=excluded.path,
+                applied=excluded.applied,
+                synced_at=datetime('now');",
+            params![id, path.display().to_string(), i64::from(applied)],
+        )?;
+        Ok(())
+    }
+
+    pub fn changeset_synced(&self, id: &str) -> Result<bool, StateError> {
+        self.init()?;
+        let connection = Connection::open(&self.path)?;
+        connection
+            .query_row(
+                "SELECT 1 FROM changeset_sync WHERE id=?1;",
+                params![id],
+                |_| Ok(()),
+            )
+            .optional()
+            .map(|value| value.is_some())
+            .map_err(StateError::from)
+    }
 }
 
 fn active_run_id(connection: &Connection) -> Result<Option<String>, StateError> {
@@ -271,5 +326,29 @@ mod tests {
 
             assert!(store.active_run().unwrap().is_none());
         }
+    }
+
+    #[test]
+    fn records_synced_changesets_idempotently() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let store = RunStateStore::new(temp_dir.path().join(".symphony/state.db"));
+
+        assert!(!store.changeset_synced("run_1").unwrap());
+        store
+            .record_changeset_synced(
+                "run_1",
+                std::path::Path::new(".harness/changesets/run_1.changeset.jsonl"),
+                true,
+            )
+            .unwrap();
+        store
+            .record_changeset_synced(
+                "run_1",
+                std::path::Path::new(".harness/changesets/run_1.changeset.jsonl"),
+                false,
+            )
+            .unwrap();
+
+        assert!(store.changeset_synced("run_1").unwrap());
     }
 }

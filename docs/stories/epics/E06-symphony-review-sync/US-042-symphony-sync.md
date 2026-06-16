@@ -2,7 +2,7 @@
 
 ## Status
 
-planned
+implemented
 
 ## Lane
 
@@ -53,5 +53,11 @@ Replaces per-PR reconciliation with idempotent local sync.
 
 ## Evidence
 
-Add validation output after implementation.
-
+- Added `harness-symphony sync` over committed `.harness/changesets/*.jsonl`.
+- Sync uses `scripts/bin/harness-cli db changeset apply`, records local
+  changeset sync state, and is safe to rerun.
+- `status` and `doctor` warn when committed changesets are unapplied.
+- Smoke: temporary destination repo reported one unapplied changeset, sync
+  applied it and created story `US-SYNC`, and a second sync skipped it.
+- Validation: `cargo test --workspace`; `cargo fmt --check`;
+  `cargo clippy --workspace -- -D warnings`.

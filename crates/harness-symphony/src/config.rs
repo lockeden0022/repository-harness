@@ -292,7 +292,7 @@ fn default_state_db() -> PathBuf {
 }
 
 fn default_runs_dir() -> PathBuf {
-    PathBuf::from(".symphony/runs")
+    PathBuf::from(".harness/runs")
 }
 
 fn default_worktrees_dir() -> PathBuf {
@@ -348,7 +348,7 @@ mod tests {
         assert_eq!(resolved.repo_root, PathBuf::from("/repo"));
         assert_eq!(resolved.harness_db, PathBuf::from("/repo/harness.db"));
         assert_eq!(resolved.state_db, PathBuf::from("/repo/.symphony/state.db"));
-        assert_eq!(resolved.runs_dir, PathBuf::from("/repo/.symphony/runs"));
+        assert_eq!(resolved.runs_dir, PathBuf::from("/repo/.harness/runs"));
         assert_eq!(
             resolved.worktrees_dir,
             PathBuf::from("/repo/.symphony/worktrees")

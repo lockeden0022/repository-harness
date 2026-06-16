@@ -5,6 +5,7 @@ use std::process::Command;
 use thiserror::Error;
 
 use crate::config::ResolvedConfig;
+use crate::sync::unapplied_changesets;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CheckStatus {
@@ -59,11 +60,35 @@ pub fn run_doctor(config: &ResolvedConfig) -> Result<DoctorReport, DoctorError> 
         check_harness_cli_exists(config),
         check_harness_db_path_support(config)?,
         check_operation_log_support(config)?,
+        check_unapplied_changesets(config),
         check_gitignore(config),
         check_agent_adapter(config),
         check_pr_adapter(config),
     ];
     Ok(DoctorReport { checks })
+}
+
+fn check_unapplied_changesets(config: &ResolvedConfig) -> DoctorCheck {
+    match unapplied_changesets(config) {
+        Ok(paths) if paths.is_empty() => DoctorCheck {
+            name: "changeset sync",
+            status: CheckStatus::Pass,
+            detail: "all committed changesets are applied locally".to_owned(),
+            next: None,
+        },
+        Ok(paths) => DoctorCheck {
+            name: "changeset sync",
+            status: CheckStatus::Warn,
+            detail: format!("{} committed changeset(s) are unapplied", paths.len()),
+            next: Some("Run: harness-symphony sync".to_owned()),
+        },
+        Err(error) => DoctorCheck {
+            name: "changeset sync",
+            status: CheckStatus::Warn,
+            detail: format!("could not inspect changesets: {error}"),
+            next: Some("Run: harness-symphony sync".to_owned()),
+        },
+    }
 }
 
 pub fn print_report(report: &DoctorReport) {
@@ -398,7 +423,7 @@ mod tests {
             repo_root: Path::new("/repo").to_path_buf(),
             harness_db: Path::new("/repo/harness.db").to_path_buf(),
             state_db: Path::new("/repo/.symphony/state.db").to_path_buf(),
-            runs_dir: Path::new("/repo/.symphony/runs").to_path_buf(),
+            runs_dir: Path::new("/repo/.harness/runs").to_path_buf(),
             worktrees_dir: Path::new("/repo/.symphony/worktrees").to_path_buf(),
             single_active_run: true,
             agent_adapter: "custom".to_owned(),

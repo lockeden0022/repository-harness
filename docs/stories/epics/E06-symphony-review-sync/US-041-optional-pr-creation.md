@@ -2,7 +2,7 @@
 
 ## Status
 
-planned
+implemented
 
 ## Lane
 
@@ -52,5 +52,11 @@ Connects local Symphony output to team review while keeping PR creation optional
 
 ## Evidence
 
-Add validation output after implementation.
-
+- Added `harness-symphony pr create <run_id>` and `pr retry <run_id>` with
+  `--dry-run` support.
+- PR planning respects disabled policy, completed normal PRs, configured draft
+  outcomes, and failed/cancelled default refusal.
+- PR artifacts include `SUMMARY.md`, `RESULT.json`, and the semantic changeset;
+  forbidden staged `harness.db` and `.symphony/` paths are rejected.
+- Validation: PR policy unit tests; `cargo test --workspace`;
+  `cargo fmt --check`; `cargo clippy --workspace -- -D warnings`.

@@ -679,7 +679,7 @@ repo:
 
 symphony:
   state_db: ".symphony/state.db"
-  runs_dir: ".symphony/runs"
+  runs_dir: ".harness/runs"
   worktrees_dir: ".symphony/worktrees"
   single_active_run: true
 

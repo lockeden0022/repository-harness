@@ -2,7 +2,7 @@
 
 ## Status
 
-planned
+implemented
 
 ## Lane
 
@@ -50,5 +50,9 @@ Makes committed changesets reviewable by humans.
 
 ## Evidence
 
-Add validation output after implementation.
-
+- Implemented `changeset` renderer for known and unknown semantic operations.
+- `SUMMARY.md` rendering is deterministic and replaces an existing Harness
+  Changes section instead of duplicating it.
+- Validation: `cargo test -p harness-symphony` includes renderer and summary
+  append tests; `cargo test --workspace`; `cargo fmt --check`;
+  `cargo clippy --workspace -- -D warnings`.

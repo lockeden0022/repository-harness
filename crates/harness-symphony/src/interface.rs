@@ -6,8 +6,11 @@ use thiserror::Error;
 
 use crate::config::{ConfigError, ResolvedConfig, SymphonyConfig};
 use crate::doctor::{print_report, run_doctor, DoctorError};
+use crate::pr::{create_pr, PrCreateResult, PrError};
+use crate::retention::{compact_runs, CompactResult, RetentionError};
 use crate::run::{execute_run, prepare_run, CompletedRun, PreparedRun, RunError};
 use crate::state::{RunRecord, RunStateStore, StateError};
+use crate::sync::{sync_changesets, unapplied_changesets, SyncError, SyncResult};
 use crate::work::{list_work, WorkError, WorkItem};
 
 #[derive(Parser, Debug)]
@@ -33,6 +36,10 @@ enum Command {
     Runs(RunsArgs),
     /// Show local Symphony status.
     Status,
+    /// Apply committed Harness changesets to local harness.db.
+    Sync,
+    /// Create or inspect pull requests for run artifacts.
+    Pr(PrArgs),
     /// Inspect resolved Symphony configuration.
     Config(ConfigArgs),
 }
@@ -70,6 +77,36 @@ enum RunsAction {
     List,
     /// Show one local Symphony run.
     Show { run_id: String },
+    /// Compact old committed run artifacts.
+    Compact {
+        /// Number of newest run artifact directories to keep.
+        #[arg(long)]
+        keep_last: Option<u32>,
+    },
+}
+
+#[derive(Args, Debug)]
+struct PrArgs {
+    #[command(subcommand)]
+    action: PrAction,
+}
+
+#[derive(Subcommand, Debug)]
+enum PrAction {
+    /// Create a pull request for a finished run.
+    Create {
+        run_id: String,
+        /// Print the PR plan without invoking a provider.
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Retry pull request creation for a finished run.
+    Retry {
+        run_id: String,
+        /// Print the PR plan without invoking a provider.
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 #[derive(Args, Debug)]
@@ -96,6 +133,12 @@ pub enum InterfaceError {
     State(#[from] StateError),
     #[error("{0}")]
     Run(#[from] RunError),
+    #[error("{0}")]
+    Sync(#[from] SyncError),
+    #[error("{0}")]
+    Retention(#[from] RetentionError),
+    #[error("{0}")]
+    Pr(#[from] PrError),
     #[error("could not determine current directory: {0}")]
     CurrentDir(std::io::Error),
 }
@@ -135,8 +178,23 @@ pub fn run(cli: Cli) -> Result<(), InterfaceError> {
             RunsAction::Show { run_id } => {
                 print_run_detail(&RunStateStore::new(resolved.state_db).show_run(&run_id)?);
             }
+            RunsAction::Compact { keep_last } => {
+                print_compact_result(&compact_runs(
+                    &resolved,
+                    keep_last.unwrap_or(resolved.compact_keep_last),
+                )?);
+            }
         },
-        Command::Status => print_status(&RunStateStore::new(resolved.state_db).active_run()?),
+        Command::Pr(args) => match args.action {
+            PrAction::Create { run_id, dry_run } | PrAction::Retry { run_id, dry_run } => {
+                print_pr_result(&create_pr(&resolved, &run_id, dry_run)?);
+            }
+        },
+        Command::Sync => print_sync_result(&sync_changesets(&resolved)?),
+        Command::Status => print_status(
+            &RunStateStore::new(resolved.state_db.clone()).active_run()?,
+            &unapplied_changesets(&resolved)?,
+        ),
     }
 
     Ok(())
@@ -260,13 +318,67 @@ fn print_run_detail(run: &RunRecord) {
     println!("next_action: {}", run.next_action);
 }
 
-fn print_status(active: &Option<RunRecord>) {
+fn print_status(active: &Option<RunRecord>, unapplied_changesets: &[PathBuf]) {
     if let Some(run) = active {
         println!("Active run: {} ({})", run.run_id, run.status);
         println!("Story: {}", run.story_id);
         println!("Next: {}", run.next_action);
     } else {
         println!("No active Symphony run.");
+    }
+    if unapplied_changesets.is_empty() {
+        println!("Changesets: all applied locally.");
+    } else {
+        println!(
+            "Changesets: {} committed changeset(s) are unapplied locally.",
+            unapplied_changesets.len()
+        );
+        println!("Next: harness-symphony sync");
+    }
+}
+
+fn print_sync_result(result: &SyncResult) {
+    let applied = result
+        .changes
+        .iter()
+        .filter(|change| change.applied)
+        .count();
+    let skipped = result.changes.len().saturating_sub(applied);
+    println!(
+        "Sync complete: {applied} applied, {skipped} skipped, {} total.",
+        result.changes.len()
+    );
+    for change in &result.changes {
+        let status = if change.applied { "applied" } else { "skipped" };
+        println!(
+            "{} {} ({} operation(s))",
+            change.id, status, change.operations
+        );
+    }
+}
+
+fn print_compact_result(result: &CompactResult) {
+    println!(
+        "Compaction complete: {} kept, {} removed.",
+        result.kept.len(),
+        result.removed.len()
+    );
+    for path in &result.removed {
+        println!("removed {}", path.display());
+    }
+}
+
+fn print_pr_result(result: &PrCreateResult) {
+    if let Some(url) = &result.url {
+        println!("PR created: {url}");
+    } else {
+        println!("PR dry run for {}", result.plan.run_id);
+    }
+    println!("Title: {}", result.plan.title);
+    println!("Draft: {}", result.plan.draft);
+    println!("Body: {}", result.plan.body_path.display());
+    for file in &result.plan.files {
+        println!("Artifact: {}", file.display());
     }
 }
 
@@ -321,6 +433,8 @@ mod tests {
         assert!(help.contains("run"));
         assert!(help.contains("runs"));
         assert!(help.contains("status"));
+        assert!(help.contains("sync"));
+        assert!(help.contains("pr"));
         assert!(help.contains("config"));
     }
 }

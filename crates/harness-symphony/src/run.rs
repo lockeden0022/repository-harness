@@ -7,6 +7,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use crate::changeset::{append_rendered_section, ChangesetError};
 use crate::config::ResolvedConfig;
 use crate::state::{NewRunRecord, RunStateStore, StateError};
 
@@ -34,6 +35,8 @@ pub enum RunError {
     Io(#[from] std::io::Error),
     #[error("json error: {0}")]
     Json(#[from] serde_json::Error),
+    #[error("{0}")]
+    Changeset(#[from] ChangesetError),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -334,6 +337,19 @@ fn validate_finished_run(
         }
     }
     ensure_forbidden_paths_not_staged(config, &prepared.worktree)?;
+    if config.changeset_render_in_summary {
+        let changeset_path = prepared.worktree.join(format!(
+            ".harness/changesets/{}.changeset.jsonl",
+            prepared.run_id
+        ));
+        if changeset_path.exists() {
+            append_rendered_section(
+                &summary_path,
+                &changeset_path,
+                &format!(".harness/changesets/{}.changeset.jsonl", prepared.run_id),
+            )?;
+        }
+    }
 
     Ok(CompletedRun {
         prepared,
@@ -462,7 +478,7 @@ mod tests {
             repo_root: PathBuf::from("/repo"),
             harness_db: PathBuf::from("/repo/harness.db"),
             state_db: PathBuf::from("/repo/.symphony/state.db"),
-            runs_dir: PathBuf::from("/repo/.symphony/runs"),
+            runs_dir: PathBuf::from("/repo/.harness/runs"),
             worktrees_dir: PathBuf::from("/repo/.symphony/worktrees"),
             single_active_run: true,
             agent_adapter: "custom".to_owned(),
@@ -518,7 +534,7 @@ mod tests {
             Path::new("/repo/.symphony/worktrees/run_1/harness.db"),
         );
         let shim = render_agents_shim(
-            Path::new("/repo/.symphony/runs/run_1/RUN_CONTRACT.json"),
+            Path::new("/repo/.harness/runs/run_1/RUN_CONTRACT.json"),
             &contract,
         );
 
