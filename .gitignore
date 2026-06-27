@@ -1,5 +1,5 @@
 # Harness durable layer — each project instance generates its own data.
-harness.db
+# harness.db
 harness.db-wal
 harness.db-shm
 
